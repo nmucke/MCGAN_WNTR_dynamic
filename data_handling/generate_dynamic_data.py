@@ -8,6 +8,7 @@ import copy
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import newton, curve_fit
+import ray
 
 
 def cov_mat_fixed(corr_demands, corr_reservoir_nodes, num_nodes=32):
@@ -93,7 +94,8 @@ def generate_demand(start_time, end_time, time_steps):
 
     return fourier_noise
 
-def simulate_WDN(demands, leak):
+@ray.remote
+def simulate_WDN(demands, leak, data_save_path=None, id=0):
 
     wn = wntr.network.WaterNetworkModel(inp_file)
     # removing samples with negative values
@@ -133,15 +135,13 @@ def simulate_WDN(demands, leak):
         wn_leak = copy.deepcopy(wn)
 
 
-        leak_start_time = np.random.uniform(1,47)*3600
+        leak_start_time = 0#np.random.uniform(1,47)*3600
         leak_pipe = leak['pipe']
 
 
         pipe = wn.get_link(leak_pipe)
         leak_diameter = pipe.diameter*leak['area']
         leak_area=3.14159*(leak_diameter/2)**2
-
-        print(leak_area)
 
         wn_leak = wntr.morph.link.split_pipe(wn_leak, leak_pipe, 'leak_pipe', 'leak_node')
         leak_node = wn_leak.get_node('leak_node')
@@ -237,13 +237,17 @@ def simulate_WDN(demands, leak):
                        'head': head_df,
                        'demand': demand_df,
                        'flow_rate': flowrate_df}
-    return result_dict
+
+
+    nx.write_gpickle(result_dict, f'{data_save_path}{id}')
+    print(id)
+    #return result_dict
 
 if __name__ == "__main__":
 
-    train_data = True
-    with_leak = False
-    num_samples = 10000
+    train_data = False
+    with_leak = True
+    num_samples = 100
 
     if train_data:
         if with_leak:
@@ -281,19 +285,23 @@ if __name__ == "__main__":
     std_dev[0] = base_demands[0]*0.05
     cov_mat = cov_mat_fixed(0.6,0.0)
 
-    sample_ids = range(7300,num_samples)
+    ray.init(num_cpus=30)
+
+    sample_ids = range(0, num_samples)
     if with_leak:
+
         leak_pipes = np.random.randint(low=1, high=35, size=num_samples)
         leak_areas = np.random.normal(loc=0.3, scale=0.01, size=num_samples)
         for id, leak_pipe, leak_area in zip(sample_ids, leak_pipes, leak_areas):
             demands = np.random.multivariate_normal(base_demands,cov_mat,1)
-            result_dict_leak = simulate_WDN(demands=demands[0],
-                                            leak={'pipe': leak_pipe,
-                                                  'area': leak_area})
-            nx.write_gpickle(result_dict_leak, f'{data_save_path}{id}')
+            simulate_WDN.remote(
+                    demands=demands[0],
+                    leak={'pipe': leak_pipe,
+                          'area': leak_area},
+                   data_save_path=data_save_path,
+                   id=id
+            )
 
-            if id % 100 == 0:
-                print(id)
 
     else:
         for id in sample_ids:
@@ -301,6 +309,3 @@ if __name__ == "__main__":
             result_dict = simulate_WDN(demands=demands[0],
                                        leak=None)
             nx.write_gpickle(result_dict, f'{data_save_path}{id}')
-
-            if id % 100 == 0:
-                print(id)

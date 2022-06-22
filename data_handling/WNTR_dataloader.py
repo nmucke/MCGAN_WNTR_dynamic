@@ -5,14 +5,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class NetworkSensorDataset(torch.utils.data.Dataset):
-    def __init__(self, data_path,
-                 num_files=10,
-                 num_skip_steps=10,
-                 memory=10,
-                 noise=None,
-                 sensor_locations=None,
-                 transformer_state=None,
-                 ):
+    def __init__(
+            self,
+            data_path,
+             num_files=10,
+             num_skip_steps=10,
+             memory=10,
+             noise=None,
+             sensor_locations=None,
+             transformer_state=None,
+             with_pars=False
+             ):
 
         self.data_path_state = data_path
         self.num_files = num_files
@@ -22,8 +25,7 @@ class NetworkSensorDataset(torch.utils.data.Dataset):
         self.sensor_locations = sensor_locations
         self.noise = noise
         self.transformer_state = transformer_state
-
-
+        self.with_pars = with_pars
 
         self.state_IDs = [i for i in range(self.num_files)]
 
@@ -31,11 +33,10 @@ class NetworkSensorDataset(torch.utils.data.Dataset):
         return self.num_files
 
     def __getitem__(self, idx):
-        data = pd.read_pickle(self.data_path_state + '/network_' + str(idx))
-        flow_rate = data['flow_rate'][self.sensor_locations['link']]
-        head = data['head'][self.sensor_locations['node']]
+        data_dict = pd.read_pickle(self.data_path_state + '/network_' + str(idx))
+        flow_rate = data_dict['flow_rate'][self.sensor_locations['link']]
+        head = data_dict['head'][self.sensor_locations['node']]
         #demand = data['demand'][self.sensor_locations['node']]
-
 
         #state = np.concatenate((flow_rate, head, demand), axis=1)
         state = np.concatenate((flow_rate, head), axis=1)
@@ -52,7 +53,16 @@ class NetworkSensorDataset(torch.utils.data.Dataset):
             data[i] = state[i:i+self.memory, :]
         data = np.swapaxes(data, 1, 2)
 
-        return data
+        if self.with_pars:
+            leak_pipe = data_dict['leak']['pipe']
+            pars = torch.zeros(34)
+            pars[leak_pipe-1] = 1
+            pars = pars.unsqueeze(0)
+            pars = pars.repeat(data.shape[0], 1)
+
+            return data, pars
+        else:
+            return data
 
 
 

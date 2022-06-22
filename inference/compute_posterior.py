@@ -47,17 +47,30 @@ def hamiltonian_monte_carlo(z_init,
                             observations,
                             posterior,
                             HMC_params,
+                            pars=None,
                             print_progress=False):
 
         log_posterior = lambda z: posterior.log_posterior(z, observations)
 
-        if print_progress:
-            z_samples = hamiltorch.sample(log_prob_func=log_posterior,
-                                          params_init=z_init,
-                                          **HMC_params)
-        else:
-            with HiddenPrints():
+        if pars is not None:
+            if print_progress:
                 z_samples = hamiltorch.sample(log_prob_func=log_posterior,
                                               params_init=z_init,
                                               **HMC_params)
+            else:
+                with HiddenPrints():
+                    z_samples = hamiltorch.sample(log_prob_func=log_posterior,
+                                                  params_init=z_init,
+                                                  **HMC_params)
+
+        else:
+            if print_progress:
+                z_samples = hamiltorch.sample(log_prob_func=log_posterior,
+                                              params_init=z_init,
+                                              **HMC_params)
+            else:
+                with HiddenPrints():
+                    z_samples = hamiltorch.sample(log_prob_func=log_posterior,
+                                                  params_init=z_init,
+                                                  **HMC_params)
         return torch.stack(z_samples)
